@@ -4,7 +4,7 @@
 
 **🔗 在线体验地址：** [http://118.31.229.223](http://118.31.229.223)  
 *(测试账号：ooohyg / 12345678)*
-https://www.google.com/url?q=https%3A%2F%2Fgithub.com%2FYeti11H%2Fooohyg-picture
+
 ---
 
 ## 🛠️ 技术栈 (Tech Stack)
@@ -50,3 +50,4 @@ com.h.ooohygpicture
 ├── manager         // 通用模块 (AI调用/COS上传)
 ├── service         // 业务逻辑层 (核心)
 └── listen          // MQ 监听器
+https://www.google.com/url?q=https%3A%2F%2Fgithub.com%2FYeti11H%2Fooohyg-picture
