@@ -7,6 +7,7 @@ import com.alibaba.dashscope.utils.Constants;
 import com.h.ooohygpicture.exception.BusinessException;
 import com.h.ooohygpicture.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -15,11 +16,12 @@ import java.util.Map;
 @Component
 @Slf4j
 public class AiManager {
-    // 把 Key 放在 yml 里配置更安全，这里先写死测试
-    private static final String API_KEY = "sk-c824e063b62c465a977dfddf22905dc9";
+    // ✅ 修改后：
+    @Value("${aliyun.ai.api-key}")
+    private String apiKey;
 
     public String createPicture(String prompt) {
-        Constants.apiKey = API_KEY;
+        Constants.apiKey = this.apiKey;
         try {
             // 1. 先定义一个 Map 来存放额外参数
             Map<String, Object> extraParams = new HashMap<>();
@@ -48,7 +50,7 @@ public class AiManager {
      * @param styleIndex 风格索引 (0~4)
      */
     public String createOutPaintingPicture(String imageUrl, Integer styleIndex) {
-        Constants.apiKey = API_KEY;
+        Constants.apiKey = this.apiKey;
         try {
             Map<String, Object> extraParams = new HashMap<>();
             extraParams.put("base_image_url", imageUrl);
