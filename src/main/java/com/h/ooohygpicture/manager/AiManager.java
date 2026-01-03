@@ -44,6 +44,7 @@ public class AiManager {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "AI 绘图失败");
         }
     }
+
     /**
      * AI 风格重绘
      * @param imageUrl 原图
