@@ -45,7 +45,7 @@ public class AiManager {
         }
     }
     /**
-     * AI 风格重绘 (修正版)
+     * AI 风格重绘
      * @param imageUrl 原图
      * @param styleIndex 风格索引 (0~4)
      */
