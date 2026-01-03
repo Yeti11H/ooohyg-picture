@@ -16,7 +16,7 @@ import java.util.Map;
 @Component
 @Slf4j
 public class AiManager {
-    // ✅ 修改后：
+
     @Value("${aliyun.ai.api-key}")
     private String apiKey;
 
