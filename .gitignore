@@ -1,0 +1,13 @@
+target/
+*.class
+.idea/
+*.iml
+*.log
+*.gz
+.DS_Store
+node_modules/
+dist/
+HELP.md
+# 如果你的生产环境配置文件有真实密码，建议也忽略掉，或者上传前把密码删掉
+src/main/resources/application-prod.yml
+src/main/resources/application.yml

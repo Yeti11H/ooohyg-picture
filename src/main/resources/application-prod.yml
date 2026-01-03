@@ -1,0 +1,67 @@
+server:
+  port: 8000
+  servlet:
+    context-path: /api  # 建议加上 /api 前缀，方便 Nginx 转发，不加也行
+
+spring:
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+  # 🔌 数据库配置 (走内网/本地回环)
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 如果用了 --net=host，直接写 127.0.0.1 即可
+    # 否则填服务器的【内网 IP】(如 172.19.0.5)
+    url: jdbc:mysql://127.0.0.1:3306/ooohyg-picture?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456  # 记得改成你的真实强密码！！
+
+  # 🔌 Redis 配置
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+    password: 123456
+
+  # 🔌 RabbitMQ 配置
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: root
+    password: 123456
+    listener:
+      simple:
+        prefetch: 1
+        acknowledge-mode: manual
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: false
+    # 生产环境建议关闭 stdout 日志，或者改用 log4j 文件输出，否则日志文件会撑爆硬盘
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: isDelete
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      column-underline: false
+      table-underline: false
+
+# COS 配置 (保持不变)
+cos:
+  client:
+    access-key: AKID9Aze6KMAnDQQFsIVXMxMZZMwITRCj4C9
+    secret-key: uc8ThkbFgtvlPs8C4jBPTRME3rZN0Rks
+    region: ap-guangzhou
+    bucket: ooohyg-picture-1392108078
+    host: https://ooohyg-picture-1392108078.cos.ap-guangzhou.myqcloud.com
+
+# 阿里 AI Key (虽然你用了环境变量，这里也可以配个兜底)
+# aliyun:
+#   api:
+#     key: sk-xxxxxxxx
