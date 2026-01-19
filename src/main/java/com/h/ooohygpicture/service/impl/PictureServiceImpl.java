@@ -83,20 +83,18 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
 
 
     @Override
-// 建议加上：避免 save 成功但空间额度更新失败时不回滚
-// @Transactional(rollbackFor = Exception.class)
     public PictureVO uploadPicture(Object inputSource, PictureUploadRequest pictureUploadRequest, User loginUser) {
 
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
+        ThrowUtils.throwIf(inputSource == null, ErrorCode.PARAMS_ERROR, "上传文件为空");
 
-        // 允许 pictureUploadRequest 为空（防御一下）
-        if (pictureUploadRequest == null) {
-            pictureUploadRequest = new PictureUploadRequest();
-        }
+        // 允许 pictureUploadRequest 为空，但一般不会
+        Long spaceId = (pictureUploadRequest == null) ? null : pictureUploadRequest.getSpaceId();
 
-        Long spaceId = pictureUploadRequest.getSpaceId();
+        Long userId = loginUser.getId();
+        Picture picture = new Picture();
 
-        // ✅ 1) 只有团队空间才做权限 & 额度校验
+        // 1) 如果是团队空间：校验空间存在、额度、成员权限
         if (spaceId != null) {
             Space space = spaceService.getById(spaceId);
             ThrowUtils.throwIf(space == null, ErrorCode.NOT_FOUND_ERROR, "空间不存在");
@@ -108,10 +106,10 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "空间容量已满");
             }
 
-            QueryWrapper<SpaceUser> queryWrapper = new QueryWrapper<>();
-            queryWrapper.eq("spaceId", spaceId);
-            queryWrapper.eq("userId", loginUser.getId());
-            SpaceUser spaceUser = spaceUserMapper.selectOne(queryWrapper);
+            QueryWrapper<SpaceUser> qw = new QueryWrapper<>();
+            qw.eq("spaceId", spaceId);
+            qw.eq("userId", userId);
+            SpaceUser spaceUser = spaceUserMapper.selectOne(qw);
 
             if (spaceUser == null) {
                 throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "您不是该空间成员，无权上传");
@@ -119,16 +117,16 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
             if ("viewer".equals(spaceUser.getSpaceRole())) {
                 throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "viewer 无上传权限");
             }
+
+            picture.setSpaceId(spaceId);
         }
 
-        // ✅ 2) 不管 spaceId 是否为空，都要上传 & 入库
-        Long userId = loginUser.getId();
-        Picture picture = new Picture();
-        picture.setUserId(userId);
-        picture.setSpaceId(spaceId); // spaceId 为空就存 null（个人空间）
+        // 2) 生成上传目录（个人：public/userId；团队：space/spaceId）
+        String uploadPathPrefix = (spaceId == null)
+                ? ("public/" + userId)
+                : ("space/" + spaceId);
 
-        String uploadPathPrefix = "public/" + userId;
-
+        // 3) 执行上传（URL / 文件）
         UploadPictureResult uploadResult;
         if (inputSource instanceof String && StrUtil.isNotBlank((String) inputSource)) {
             uploadResult = urlPictureUpload.uploadPicture(inputSource, uploadPathPrefix);
@@ -136,36 +134,38 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
             uploadResult = filePictureUpload.uploadPicture(inputSource, uploadPathPrefix);
         }
 
+        // 4) 写入 picture 实体（一定要 set userId / url 等）
+        picture.setUserId(userId);
         picture.setUrl(uploadResult.getUrl());
+        picture.setThumbnailUrl(uploadResult.getThumbnailUrl());
         picture.setName(uploadResult.getPicName());
         picture.setPicSize(uploadResult.getPicSize());
-
         picture.setPicWidth(uploadResult.getPicWidth());
         picture.setPicHeight(uploadResult.getPicHeight());
         picture.setPicScale(uploadResult.getPicScale());
         picture.setPicFormat(uploadResult.getPicFormat());
         picture.setPicColor(uploadResult.getPicColor());
-        picture.setThumbnailUrl(uploadResult.getThumbnailUrl());
 
-        // ✅ 分类：空就默认
-        String category = pictureUploadRequest.getCategory();
+        // category 默认值
+        String category = (pictureUploadRequest == null) ? null : pictureUploadRequest.getCategory();
         picture.setCategory(StrUtil.isBlank(category) ? "默认" : category);
 
-        // ✅ 标签：List<String> -> JSON
-        if (CollUtil.isNotEmpty(pictureUploadRequest.getTags())) {
+        // tags List -> JSON
+        if (pictureUploadRequest != null && CollUtil.isNotEmpty(pictureUploadRequest.getTags())) {
             picture.setTags(JSONUtil.toJsonStr(pictureUploadRequest.getTags()));
         }
 
+        // 5) 审核参数 + 入库
         this.fillReviewParams(picture, loginUser);
 
         boolean saved = this.save(picture);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "图片入库失败");
 
-        // ✅ 3) 团队空间才更新额度（并且建议用一个 setSql 写完，避免覆盖）
+        // 6) 如果是团队空间：更新空间额度（建议：图片入库成功后再更新）
         if (spaceId != null) {
             boolean updateSpace = spaceService.update()
-                    .setSql("totalSize = totalSize + " + picture.getPicSize() +
-                            ", totalCount = totalCount + 1")
+                    .setSql("totalSize = totalSize + " + picture.getPicSize())
+                    .setSql("totalCount = totalCount + 1")
                     .eq("id", spaceId)
                     .update();
             if (!updateSpace) {
