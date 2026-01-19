@@ -1,53 +1,67 @@
-# ☁️ 企业级智能协同云图库 (Cloud Picture Platform)
+# ☁️ Cloud Picture Platform - 企业级智能协同云图库
 
-> 基于 Spring Boot + Vue3 的企业级图片协作平台，集成 AIGC 智能扩图与多级缓存架构。
-
-**🔗 在线体验地址：** [http://129.204.154.139](http://129.204.154.139)  
-*(测试账号：ooohyg / 12345678)*
+> **基于 Spring Boot + Vue3 的企业级图片协作平台，集成 AIGC 智能扩图与多级缓存架构。**  
+> *专注于解决高并发下的图片处理与团队协作权限控制问题。*
 
 ---
 
-## 🛠️ 技术栈 (Tech Stack)
+## 🔗 在线体验 (Live Demo)
 
-- **后端**：Spring Boot 2.7, MyBatis Plus
-- **数据库**：MySQL 8.0 (主从架构设计)
-- **缓存**：Caffeine (本地) + Redis (分布式) 多级缓存
-- **消息队列**：RabbitMQ (异步解耦/流量削峰)
-- **AI 能力**：阿里通义万相 (DashScope SDK)
-- **存储**：腾讯云 COS + 数据万象 (CI)
-- **运维**：Docker, Nginx, Linux
+- **🖥️ 可视化演示台**: [http://129.204.154.139:81](http://129.204.154.139:81)
+  - *说明：核心功能流程演示（登录 -> 上传 -> AIGC 扩图 -> 异步轮询）*
+- **📚 接口文档 (API Docs)**: [http://129.204.154.139:8000/api/doc.html](http://129.204.154.139:8000/api/doc.html)
+  - *说明：全量接口调试，包含团队空间、权限控制等完整业务模块。*
+- **测试账号**: `ooohyg` / `12345678`
 
 ---
 
-## 🌟 核心亮点 (Highlights)
+## 🛠️ 技术架构 (Tech Stack)
 
-### 1. 🎨 AIGC 智能扩图与风格重绘
-- 针对 AI 生成耗时（10s+）痛点，设计了 **"生产-消费"异步任务架构**。
-- 前端提交任务 -> 写入 DB (Pending) -> 发送 MQ -> 消费者调用 AI -> 轮询查状态。
-- 解决了 **跨云厂商格式兼容性** 问题（WebP 转 PNG），利用 COS 数据万象实现云端实时转码。
-
-### 2. 🚀 多级缓存防击穿架构
-- 针对热点图片查询，构建 **Caffeine + Redis** 两级缓存体系。
-- 引入 **Redisson 分布式锁** 解决缓存击穿问题，采用 Double-Check Lock 机制保障数据库安全。
-
-### 3. 🛡️ 企业级权限与安全
-- 基于 **AOP 切面** 实现精细化 RBAC 权限控制（@SaSpaceCheckPermission）。
-- 实现了基于 **事务 (@Transactional)** 的批量操作（删/改/审），杜绝脏数据。
-
-### 4. 🐳 DevOps 容器化部署
-- 编写 Dockerfile 优化 JVM 参数 (`-Xmx512m`)，在低配服务器上稳定运行。
-- 使用 Nginx 反向代理实现前后端同域访问，解决 CORS 跨域问题。
+| 模块 | 技术选型 | 核心作用 |
+| :--- | :--- | :--- |
+| **后端框架** | Spring Boot 2.7 + MyBatis Plus | 快速构建、业务逻辑处理 |
+| **数据库** | **MySQL 8.0 (主从设计)** | 核心业务数据存储 |
+| **多级缓存** | **Caffeine (L1) + Redis (L2)** | 解决热点图片高并发查询，防缓存击穿 |
+| **消息队列** | **RabbitMQ** | AIGC 任务异步解耦、流量削峰填谷 |
+| **AI 能力** | 阿里通义万相 (DashScope) | 智能扩图、风格重绘底层模型 |
+| **对象存储** | **腾讯云 COS + 数据万象 CI** | 海量图片存储、云端实时格式转换 |
+| **部署运维** | Docker + Nginx | 容器化部署、反向代理、跨域解决 |
 
 ---
 
-## 📂 目录结构 (Structure)
+## 🌟 核心亮点 (Key Features)
+
+### 1. 🎨 高性能 AIGC 异步架构
+针对 AI 生成耗时长（平均 10s+）导致的请求阻塞问题，设计了 **"生产者-消费者"** 模型：
+- **异步解耦**：前端提交任务立刻返回 TaskID，后端通过 RabbitMQ 异步投递消息。
+- **状态流转**：`Pending` (入库) -> `Generating` (消费中) -> `Succeeded` (完成)。
+- **兼容性处理**：利用 **数据万象 (CI)** 自动将 WebP 格式转码为 PNG，解决 AI 模型格式不兼容问题。
+
+### 2. 🚀 多级缓存防击穿方案
+针对 "公共图库" 这种读多写少的场景，构建了二级缓存体系：
+- **L1 本地缓存**：使用 Caffeine 存储极热数据，响应时间 < 1ms。
+- **L2 分布式缓存**：Redis 存储全量热点数据。
+- **安全保障**：引入 **Redisson 分布式锁** + **Double-Check Lock (双重检查锁)** 机制，彻底解决高并发下的缓存击穿与缓存雪崩问题。
+
+### 3. 🛡️ AOP + RBAC 精细化权限控制
+放弃传统的硬编码校验，采用 **AOP 切面** 实现非侵入式权限控制：
+- 自定义注解 `@SaSpaceCheckPermission`，自动解析当前用户角色与空间权限。
+- 支持 **团队空间** 隔离，实现 "管理员可见全部、普通成员仅见自己" 的数据隔离策略。
+
+### 4. 🐳 全栈容器化 DevOps
+- 编写 `Dockerfile` 并针对低配服务器（2G内存）优化 JVM 参数 (`-Xmx512m`)。
+- 引入 Swap 交换分区技术，在有限资源下稳定运行 MySQL、Redis、MQ 等中间件。
+- Nginx 反向代理配置，实现前后端同域部署，彻底解决浏览器 CORS 跨域限制。
+
+---
+
+## 📂 项目结构 (Project Structure)
 
 ```text
 com.h.ooohygpicture
-├── aop             // 切面 (权限校验/日志)
-├── config          // 配置类 (Cors/MyBatis/Redis)
-├── controller      // 接口层
-├── manager         // 通用模块 (AI调用/COS上传)
-├── service         // 业务逻辑层 (核心)
-└── listen          // MQ 监听器
-https://www.google.com/url?q=https%3A%2F%2Fgithub.com%2FYeti11H%2Fooohyg-picture
+├── aop             // 切面模块 (权限校验 / 统一日志 / 全局异常)
+├── config          // 核心配置 (Cors / Redis / ThreadPool)
+├── controller      // 接口层 (RESTful API)
+├── manager         // 第三方适配层 (AI 接口封装 / COS 上传策略)
+├── service         // 业务逻辑层 (核心 CRUD / 缓存策略)
+└── listen          // 消息监听 (RabbitMQ 消费者)
