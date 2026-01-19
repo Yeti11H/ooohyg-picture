@@ -83,109 +83,99 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture> impl
 
 
     @Override
+// 建议加上：避免 save 成功但空间额度更新失败时不回滚
+// @Transactional(rollbackFor = Exception.class)
     public PictureVO uploadPicture(Object inputSource, PictureUploadRequest pictureUploadRequest, User loginUser) {
 
-        Long spaceId = pictureUploadRequest.getSpaceId();
-        Picture picture = new Picture();
-        if (spaceId != null) {
-            // ============ 🚀 新增：团队空间权限校验 START ============
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
 
-
-            // 2. 🚀 【新增】校验空间权限 & 额度
-            if (spaceId != null) {
-                Space space = spaceService.getById(spaceId);
-                ThrowUtils.throwIf(space == null, ErrorCode.NOT_FOUND_ERROR, "空间不存在");
-
-                if (space.getTotalCount() >= space.getMaxCount()) {
-                    throw new BusinessException(ErrorCode.OPERATION_ERROR, "空间条数已满");
-                }
-                if (space.getTotalSize() >= space.getMaxSize()) {
-                    throw new BusinessException(ErrorCode.OPERATION_ERROR, "空间容量已满");
-                }
-                QueryWrapper<SpaceUser> queryWrapper = new QueryWrapper<>();
-                queryWrapper.eq("spaceId", spaceId);
-                queryWrapper.eq("userId", loginUser.getId());
-                SpaceUser spaceUser = spaceUserMapper.selectOne(queryWrapper);
-
-                if (spaceUser == null) {
-                    throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "您不是该空间成员，无权上传");
-                }
-
-                // (可选) 可以在这里校验角色，比如只有 editor/admin 能传，viewer 不能传
-                if ("viewer".equals(spaceUser.getSpaceRole())) {
-                    throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-                }
-
-                // ============ 🚀 新增：团队空间权限校验 END ============
-            }
-
-            Long userId = loginUser.getId();
-
-            // 修正 1：只传目录路径，不要自己拼接文件名！
-            // 这样 Template 会自动生成 日期_UUID.jpg，路径就是 public/1/2024-xxx.jpg
-            String uploadPathPrefix = "public/" + userId;
-
-            UploadPictureResult uploadResult;
-
-            // 修正 2：调用 uploadPicture 时，只传 inputSource 和 uploadPathPrefix
-            if (inputSource instanceof String && StrUtil.isNotBlank((String) inputSource)) {
-                uploadResult = urlPictureUpload.uploadPicture(inputSource, uploadPathPrefix);
-            } else {
-                uploadResult = filePictureUpload.uploadPicture(inputSource, uploadPathPrefix);
-            }
-
-
-            picture.setUrl(uploadResult.getUrl());
-            // 修正 3：使用 Template 返回的规范文件名（或者 uploadResult.getPicName() 也可以）
-            picture.setName(uploadResult.getPicName());
-            picture.setPicSize(uploadResult.getPicSize());
-            picture.setUserId(userId);
-
-            // 修正 4：补充缺失的字段 (数据万象解析出的数据)
-            picture.setPicWidth(uploadResult.getPicWidth());
-            picture.setPicHeight(uploadResult.getPicHeight());
-            picture.setPicScale(uploadResult.getPicScale());
-            picture.setPicFormat(uploadResult.getPicFormat());
-            picture.setPicColor(uploadResult.getPicColor());
-            picture.setThumbnailUrl(uploadResult.getThumbnailUrl());
-            picture.setSpaceId(spaceId); // 👈 记得把 spaceId 存进数据库！
-            if (StrUtil.isBlank(pictureUploadRequest.getCategory())) {
-                picture.setCategory("默认"); // 或者 "其他"
-            } else {
-                picture.setCategory(pictureUploadRequest.getCategory());
-            }
-            // 🚀 【新增】补充 category 和 tags 字段
-            if (pictureUploadRequest != null) {
-                // 1. 设置分类
-                picture.setCategory(pictureUploadRequest.getCategory());
-
-                // 2. 设置标签 (List<String> -> JSON String)
-                // 需要引入 cn.hutool.json.JSONUtil
-                if (CollUtil.isNotEmpty(pictureUploadRequest.getTags())) {
-                    picture.setTags(JSONUtil.toJsonStr(pictureUploadRequest.getTags()));
-                }
-            }
-            this.fillReviewParams(picture, loginUser);
-            this.save(picture);
-            // 6. 🚀 【新增】更新空间已用额度
-            if (spaceId != null) {
-                // 使用 SQL 直接更新：totalSize = totalSize + 新图大小
-                boolean updateSpace = spaceService.update()
-                        .setSql("totalSize = totalSize + " + picture.getPicSize())
-                        .setSql("totalCount = totalCount + 1")
-                        .eq("id", spaceId)
-                        .update();
-                if (!updateSpace) {
-                    // 如果更新失败（比如刚才刚好被删了），可以抛异常回滚，或者记录日志
-                    throw new BusinessException(ErrorCode.OPERATION_ERROR, "更新空间额度失败");
-                }
-            }
-
-
-
+        // 允许 pictureUploadRequest 为空（防御一下）
+        if (pictureUploadRequest == null) {
+            pictureUploadRequest = new PictureUploadRequest();
         }
+
+        Long spaceId = pictureUploadRequest.getSpaceId();
+
+        // ✅ 1) 只有团队空间才做权限 & 额度校验
+        if (spaceId != null) {
+            Space space = spaceService.getById(spaceId);
+            ThrowUtils.throwIf(space == null, ErrorCode.NOT_FOUND_ERROR, "空间不存在");
+
+            if (space.getTotalCount() >= space.getMaxCount()) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "空间条数已满");
+            }
+            if (space.getTotalSize() >= space.getMaxSize()) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "空间容量已满");
+            }
+
+            QueryWrapper<SpaceUser> queryWrapper = new QueryWrapper<>();
+            queryWrapper.eq("spaceId", spaceId);
+            queryWrapper.eq("userId", loginUser.getId());
+            SpaceUser spaceUser = spaceUserMapper.selectOne(queryWrapper);
+
+            if (spaceUser == null) {
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "您不是该空间成员，无权上传");
+            }
+            if ("viewer".equals(spaceUser.getSpaceRole())) {
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "viewer 无上传权限");
+            }
+        }
+
+        // ✅ 2) 不管 spaceId 是否为空，都要上传 & 入库
+        Long userId = loginUser.getId();
+        Picture picture = new Picture();
+        picture.setUserId(userId);
+        picture.setSpaceId(spaceId); // spaceId 为空就存 null（个人空间）
+
+        String uploadPathPrefix = "public/" + userId;
+
+        UploadPictureResult uploadResult;
+        if (inputSource instanceof String && StrUtil.isNotBlank((String) inputSource)) {
+            uploadResult = urlPictureUpload.uploadPicture(inputSource, uploadPathPrefix);
+        } else {
+            uploadResult = filePictureUpload.uploadPicture(inputSource, uploadPathPrefix);
+        }
+
+        picture.setUrl(uploadResult.getUrl());
+        picture.setName(uploadResult.getPicName());
+        picture.setPicSize(uploadResult.getPicSize());
+
+        picture.setPicWidth(uploadResult.getPicWidth());
+        picture.setPicHeight(uploadResult.getPicHeight());
+        picture.setPicScale(uploadResult.getPicScale());
+        picture.setPicFormat(uploadResult.getPicFormat());
+        picture.setPicColor(uploadResult.getPicColor());
+        picture.setThumbnailUrl(uploadResult.getThumbnailUrl());
+
+        // ✅ 分类：空就默认
+        String category = pictureUploadRequest.getCategory();
+        picture.setCategory(StrUtil.isBlank(category) ? "默认" : category);
+
+        // ✅ 标签：List<String> -> JSON
+        if (CollUtil.isNotEmpty(pictureUploadRequest.getTags())) {
+            picture.setTags(JSONUtil.toJsonStr(pictureUploadRequest.getTags()));
+        }
+
+        this.fillReviewParams(picture, loginUser);
+
+        boolean saved = this.save(picture);
+        ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "图片入库失败");
+
+        // ✅ 3) 团队空间才更新额度（并且建议用一个 setSql 写完，避免覆盖）
+        if (spaceId != null) {
+            boolean updateSpace = spaceService.update()
+                    .setSql("totalSize = totalSize + " + picture.getPicSize() +
+                            ", totalCount = totalCount + 1")
+                    .eq("id", spaceId)
+                    .update();
+            if (!updateSpace) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "更新空间额度失败");
+            }
+        }
+
         return PictureVO.objToVo(picture);
     }
+
 
     @Override
     public PictureVO getPictureVO(Picture picture, HttpServletRequest request) {
